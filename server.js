@@ -59,9 +59,20 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
 };
 
+// Cloudflare overrides our no-cache on .js with a 4 hour browser TTL, so a phone could pair a new
+// index.html with an old apply.js and hang on "Laden". index.html therefore asks for
+// apply.js?v=<content hash>: a new version is a new URL that no cache has seen yet.
+const APPLY_VERSION = crypto.createHash('sha256').update(fs.readFileSync(path.join(PUBLIC, 'apply.js'))).digest('hex').slice(0, 12);
+const INDEX_HTML = Buffer.from(fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8')
+  .replace('<script src="apply.js"></script>', `<script src="apply.js?v=${APPLY_VERSION}"></script>`));
+
 function serveStatic(req, res, url) {
   let rel = decodeURIComponent(url.pathname);
   if (rel === '/') rel = '/index.html';
+  if (rel === '/index.html') {
+    res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' });
+    return res.end(INDEX_HTML);
+  }
   const file = path.normalize(path.join(PUBLIC, rel));
   if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(404); return res.end(); }
   fs.readFile(file, (err, buf) => {

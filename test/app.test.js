@@ -62,7 +62,9 @@ test('server needs the spelcode and stores ops', async () => {
     assert.strictEqual(body.games[0].scores.pb.chance, 22);
     const saved = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'games.json'), 'utf8'));
     assert.strictEqual(saved.games.length, 1);
-    assert.strictEqual((await fetch(base + '/')).status, 200);
+    const html = await (await fetch(base + '/')).text();
+    assert.match(html, /<script src="apply\.js\?v=[0-9a-f]{12}"><\/script>/);
+    assert.strictEqual((await fetch(base + '/apply.js?v=abc')).status, 200);
     assert.strictEqual((await fetch(base + '/../server.js')).status, 404);
   } finally { server.close(); }
 });
