@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { apply, validOp } = require('./public/apply.js');
+const { apply, validOp, migrate } = require('./public/apply.js');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -16,7 +16,9 @@ const PUBLIC = path.join(__dirname, 'public');
 const DB_FILE = path.join(DATA_DIR, 'games.json');
 
 function load() {
-  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch { return { version: 0, games: [] }; }
+  let data;
+  try { data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch { data = { version: 0, games: [], players: [] }; }
+  return migrate(data);
 }
 let db = load();
 
@@ -106,10 +108,10 @@ const server = http.createServer(async (req, res) => {
     try { body = JSON.parse(await readBody(req)); } catch { return json(res, 400, { error: 'Ongeldig verzoek' }); }
     const ops = Array.isArray(body && body.ops) ? body.ops : null;
     if (!ops || ops.length > 500) return json(res, 400, { error: 'Ongeldig verzoek' });
-    let games = db.games, applied = 0;
-    for (const op of ops) { if (validOp(op)) { games = apply(games, op); applied++; } }
+    let data = { games: db.games, players: db.players }, applied = 0;
+    for (const op of ops) { if (validOp(op)) { data = apply(data, op); applied++; } }
     if (applied) {
-      db = { version: db.version + 1, games: games.slice(0, 1000) };
+      db = { version: db.version + 1, games: data.games.slice(0, 1000), players: data.players.slice(0, 200) };
       save();
       broadcast();
     }

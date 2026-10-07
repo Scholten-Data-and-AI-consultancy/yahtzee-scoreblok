@@ -5,6 +5,7 @@ Een scoreblok voor Yahtzee zonder reclame. Het is een installeerbare webapp: je 
 - Bonus van 35 (bij 63 of meer), Yahtzee bonus en alle totalen worden zelf uitgerekend
 - Een rij met gewonnen potjes per speler, over alle afgemaakte potjes
 - Hoogste scores: de top 10 en per speler het aantal potjes, overwinningen, het gemiddelde en de beste score
+- Spelers worden bewaard: bij een nieuw potje tik je ze aan in plaats van hun naam te typen. Per speler is er een pagina met al zijn potjes en scores, en je kunt een naam wijzigen zonder de geschiedenis kwijt te raken
 - Laat zien wie er aan de beurt is en in welke ronde je zit. Een leeg vakje vul je alleen in als je aan de beurt bent, een ingevulde score kun je altijd corrigeren
 - Werkt ook zonder verbinding: wijzigingen wachten op de telefoon en gaan mee zodra er weer verbinding is
 - Afgeschermd met één spelcode die je per toestel één keer invult
