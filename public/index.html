@@ -250,7 +250,8 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     store.set('yz.pending', pending);
   }
   function updateStatus() {
-    if (!online) setStatus(pending.length ? `Offline, ${pending.length} ${pending.length === 1 ? 'wijziging wacht' : 'wijzigingen wachten'}` : 'Offline', 'local');
+    if (state.needCode) setStatus('Spelcode nodig', 'ro');
+    else if (!online) setStatus(pending.length ? `Offline, ${pending.length} ${pending.length === 1 ? 'wijziging wacht' : 'wijzigingen wachten'}` : 'Offline', 'local');
     else if (pending.length) setStatus('Opslaan…');
     else setStatus('Gesynchroniseerd');
   }
@@ -268,6 +269,8 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   function needCode() {
     state.needCode = true;
     online = false;
+    if (events) { events.close(); events = null; }
+    updateStatus();
     render();
   }
 
@@ -364,6 +367,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
       await fetchState();
       if (state.needCode) { state.codeError = true; render(); return; }
       state.codeError = false;
+      updateStatus();
       listen(); flush();
     };
     document.getElementById('code-ok').onclick = go;

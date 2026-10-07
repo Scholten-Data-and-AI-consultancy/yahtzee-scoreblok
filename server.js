@@ -8,7 +8,10 @@ const { apply, validOp } = require('./public/apply.js');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const SPELCODE = process.env.SPELCODE || '';
+// Forgiving on purpose: a code typed on a phone keyboard, or pasted into Coolify with quotes or a
+// trailing space, should still match. Case, surrounding whitespace and surrounding quotes are ignored.
+const normalizeCode = s => String(s || '').trim().replace(/^(["'])(.*)\1$/, '$2').trim().toLowerCase();
+const SPELCODE = normalizeCode(process.env.SPELCODE);
 const PUBLIC = path.join(__dirname, 'public');
 const DB_FILE = path.join(DATA_DIR, 'games.json');
 
@@ -33,7 +36,7 @@ function broadcast() {
 function authorized(req, url) {
   if (!SPELCODE) return true;
   const given = req.headers['x-spelcode'] || url.searchParams.get('code') || '';
-  const a = Buffer.from(String(given)), b = Buffer.from(SPELCODE);
+  const a = Buffer.from(normalizeCode(given)), b = Buffer.from(SPELCODE);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 

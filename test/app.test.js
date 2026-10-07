@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-'));
-process.env.SPELCODE = 'dobbel';
+process.env.SPELCODE = ' "Dobbel" ';
 const { apply, validOp } = require('../public/apply.js');
 const { server } = require('../server.js');
 
@@ -36,6 +36,8 @@ test('server needs the spelcode and stores ops', async () => {
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     assert.strictEqual((await fetch(base + '/api/state')).status, 401);
+    assert.strictEqual((await fetch(base + '/api/state', { headers: { 'X-Spelcode': 'dobbels' } })).status, 401);
+    assert.strictEqual((await fetch(base + '/api/state', { headers: { 'X-Spelcode': ' DOBBEL ' } })).status, 200);
     const h = { 'Content-Type': 'application/json', 'X-Spelcode': 'dobbel' };
     const r = await fetch(base + '/api/ops', { method: 'POST', headers: h, body: JSON.stringify({ ops: [create, { type: 'score', id: 'g1', pid: 'pb', key: 'chance', value: 22 }] }) });
     const body = await r.json();
