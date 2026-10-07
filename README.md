@@ -18,7 +18,7 @@ Geen dependencies, alleen Node 20 of nieuwer.
 
 | Variabele | Betekenis |
 |-----------|-----------|
-| `SPELCODE` | De code die je op elk toestel invult. Leeg betekent geen code (alleen lokaal gebruiken). |
+| `SPELCODE` | De code die je op elk toestel invult. Hoofdletters, spaties eromheen en aanhalingstekens tellen niet mee. Leeg betekent geen code (alleen lokaal gebruiken). |
 | `DATA_DIR` | Map voor `games.json`. In Docker is dat `/data`. |
 | `PORT` | Standaard 3000. |
 
