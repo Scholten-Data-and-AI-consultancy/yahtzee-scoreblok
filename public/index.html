@@ -127,6 +127,12 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
 .wins .trophy { color: var(--good); font-size: 13px; margin-right: 3px; }
 .leader { display: inline-block; margin-left: 4px; color: var(--good); }
 
+.turn-bar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 2; box-shadow: 0 2px 8px rgba(10, 16, 30, .12); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; background: var(--pen-soft); color: var(--pen); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px; }
+.turn-bar strong { font-size: 17px; }
+.turn-bar .small { color: var(--ink-soft); }
+.sheet thead th.turn { color: var(--pen); box-shadow: inset 0 -3px 0 var(--pen); }
+.sheet td.turn-col { background: color-mix(in srgb, var(--pen-soft) 45%, transparent); }
+.chip.turn { background: var(--pen); color: var(--sheet); }
 .winner { background: var(--good-soft); color: var(--good); border-radius: var(--radius); padding: 12px 16px; font-weight: 700; }
 
 /* Picker sheet */
@@ -212,6 +218,15 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     const filled = CATS.filter(c => val(sc, c.key) !== null).length;
     const upperFilled = UPPER.filter(c => val(sc, c.key) !== null).length;
     return { upper, bonus, lower, yzBonus, total: upper + bonus + lower, filled, upperFilled, done: filled === CATS.length };
+  }
+  // Every turn fills exactly one box, so whoever has filled the fewest boxes plays next;
+  // on a tie the earliest player in the column order goes first. Returns null once the game is over.
+  function turnOf(g) {
+    const players = g.players || [];
+    if (!players.length || gameDone(g)) return null;
+    const counts = players.map(p => totals(g, p.id).filled);
+    const min = Math.min(...counts);
+    return { player: players[counts.indexOf(min)], round: min + 1 };
   }
   const gameDone = g => (g.players || []).length > 0 && g.players.every(p => totals(g, p.id).done);
   // Wins per player across all finished games, matched by name. A tie counts as a win for each top scorer.
@@ -396,12 +411,13 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
             const done = gameDone(g);
             const date = new Date(g.createdAt).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
             const lead = (g.players || []).map(p => ({ p, t: totals(g, p.id).total })).sort((a, b) => b.t - a.t)[0];
+            const turn = turnOf(g);
             return `<button class="game-item" data-open="${esc(g.id)}">
               <span class="gi-main">
                 <span class="gi-names">${(g.players || []).map(p => esc(p.name)).join(', ')}</span>
                 <span class="small muted">${esc(date)}${lead ? ` · ${done ? 'gewonnen door' : 'voorop'}: ${esc(lead.p.name)} (${lead.t})` : ''}</span>
               </span>
-              <span class="chip ${done ? 'done' : ''}">${done ? 'Klaar' : 'Bezig'}</span>
+              <span class="chip ${done ? 'done' : 'turn'}">${done ? 'Klaar' : `${esc(turn.player.name)} is aan de beurt`}</span>
             </button>`;
           }).join('')}</div>`;
     return `
@@ -453,7 +469,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
       const cls = v === null ? 'empty-cell' : v === 0 ? 'zero' : '';
       const just = state.flash === p.id + ':' + c.key ? ' just' : '';
       const label = `${c.name} voor ${p.name}: ${v === null ? 'leeg' : v}`;
-      return `<td><button class="cell ${cls}${just}" data-p="${esc(p.id)}" data-k="${c.key}" aria-label="${esc(label)}" ${state.canWrite ? '' : 'disabled'}>${v === null ? '·' : v}</button></td>`;
+      return `<td${p.id === turnId ? ' class="turn-col"' : ''}><button class="cell ${cls}${just}" data-p="${esc(p.id)}" data-k="${c.key}" aria-label="${esc(label)}" ${state.canWrite ? '' : 'disabled'}>${v === null ? '·' : v}</button></td>`;
     };
     const catCell = c => `<td class="cat"><div class="cat-wrap">${c.face ? dieSvg(c.face) : ''}<div><div class="cat-name">${c.name}</div>${c.hint ? `<div class="cat-hint">${c.hint}</div>` : c.face ? `<div class="cat-hint">tel alle ${c.name.toLowerCase()}</div>` : ''}</div></div></td>`;
     const row = c => `<tr>${catCell(c)}${players.map(p => cellBtn(p, c)).join('')}</tr>`;
@@ -466,6 +482,8 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     }).join('')}</tr>`;
 
     const winners = players.filter(p => T[p.id].total === best);
+    const turn = turnOf(g);
+    const turnId = turn ? turn.player.id : null;
     return `
       <div class="game-head" style="margin-bottom:12px">
         <button class="btn ghost" id="back" type="button">‹ Alle potjes</button>
@@ -476,10 +494,11 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
             : `<button class="btn ghost danger" id="del" type="button">Verwijder</button>`) : ''}
         </div>
       </div>
+      ${turn ? `<div class="turn-bar" role="status"><strong>${esc(turn.player.name)} is aan de beurt</strong><span class="small">ronde ${turn.round} van 13</span></div>` : ''}
       ${done ? `<div class="winner" style="margin-bottom:12px">${winners.length > 1 ? 'Gelijkspel' : 'Gewonnen'}: ${winners.map(p => esc(p.name)).join(' en ')} met ${best} punten</div>` : ''}
       <div class="sheet-scroll">
         <table class="sheet">
-          <thead><tr><th>Bovenste deel</th>${players.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
+          <thead><tr><th>Bovenste deel</th>${players.map(p => `<th${p.id === turnId ? ' class="turn" aria-current="true"' : ''}>${esc(p.name)}</th>`).join('')}</tr></thead>
           <tbody>
             ${UPPER.map(row).join('')}
             ${sumRow('Subtotaal', (p, t) => {
