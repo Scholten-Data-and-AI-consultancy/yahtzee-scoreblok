@@ -94,6 +94,25 @@ h2 { font-family: var(--font-display); font-size: 18px; margin: 0; text-wrap: ba
 .chip { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--pen-soft); color: var(--pen); white-space: nowrap; }
 .chip.done { background: var(--good-soft); color: var(--good); }
 .empty { padding: 8px 0; }
+.records { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.records h3 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
+.records > div { min-width: 0; }
+.home-stack { display: flex; flex-direction: column; gap: 18px; }
+.top-list { list-style: none; margin: 0; padding: 0; font-variant-numeric: tabular-nums; }
+.top-list li { display: grid; grid-template-columns: 2ch 1fr auto; gap: 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--rule); }
+.top-list li:first-child { border-top: 0; }
+.top-list .rank { color: var(--ink-soft); font-weight: 600; text-align: right; }
+.top-list .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-list .who .small { margin-left: 6px; }
+.top-list .pts { font-weight: 800; color: var(--pen); font-size: 17px; }
+.top-list li.first .pts, .top-list li.first .rank { color: var(--good); }
+.stats-scroll { overflow-x: auto; }
+table.stats { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; }
+.stats th { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); text-align: right; padding: 6px 0 6px 8px; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+.stats td { text-align: right; padding: 8px 0 8px 8px; border-bottom: 1px solid var(--rule); }
+.stats th:first-child, .stats td:first-child { text-align: left; padding-left: 0; }
+.stats td:first-child { font-weight: 600; }
+.stats td.best { font-weight: 800; color: var(--pen); }
 
 /* Score sheet */
 .game-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; }
@@ -231,6 +250,56 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
       new Set(ts.filter(x => x.t === top).map(x => x.k)).forEach(k => { wins[k] = (wins[k] || 0) + 1; });
     });
     return wins;
+  }
+
+  // High scores over finished games only: a game still in progress has totals that will change.
+  // Players are matched by name, like the wins row, and shown with the spelling they used last.
+  function records() {
+    const done = state.games.filter(gameDone);
+    const wins = winsByName();
+    const scores = [];
+    const byName = {};
+    done.forEach(g => g.players.forEach(p => {
+      const t = totals(g, p.id).total;
+      scores.push({ name: p.name, total: t, createdAt: g.createdAt });
+      const k = nameKey(p.name);
+      const r = byName[k] || (byName[k] = { name: p.name, last: 0, played: 0, sum: 0, best: 0 });
+      r.played++; r.sum += t; r.best = Math.max(r.best, t);
+      if (g.createdAt >= r.last) { r.last = g.createdAt; r.name = p.name; }
+    }));
+    const top = scores.sort((a, b) => b.total - a.total || a.createdAt - b.createdAt).slice(0, 10);
+    const players = Object.entries(byName)
+      .map(([k, r]) => ({ ...r, wins: wins[k] || 0, avg: Math.round(r.sum / r.played) }))
+      .sort((a, b) => b.best - a.best || b.wins - a.wins);
+    return { top, players, games: done.length };
+  }
+
+  function recordsView() {
+    if (!state.loaded) return '';
+    const { top, players, games } = records();
+    const body = !games
+      ? `<p class="muted empty">Nog geen afgemaakte potjes. Zodra een potje helemaal is ingevuld, verschijnen de scores hier.</p>`
+      : `<div class="records">
+          <div>
+            <h3>Top ${top.length}</h3>
+            <ol class="top-list">${top.map((r, i) => `<li class="${i === 0 ? 'first' : ''}">
+              <span class="rank">${i + 1}</span>
+              <span class="who">${esc(r.name)}<span class="small muted">${esc(new Date(r.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }))}</span></span>
+              <span class="pts">${r.total}</span>
+            </li>`).join('')}</ol>
+          </div>
+          <div>
+            <h3>Per speler</h3>
+            <div class="stats-scroll"><table class="stats">
+              <thead><tr><th>Speler</th><th title="Gespeeld">Potjes</th><th title="Gewonnen">Winst</th><th title="Gemiddeld">Gem.</th><th>Beste</th></tr></thead>
+              <tbody>${players.map(r => `<tr><td>${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.avg}</td><td class="best">${r.best}</td></tr>`).join('')}</tbody>
+            </table></div>
+          </div>
+        </div>`;
+    return `<section class="panel" aria-labelledby="rec-h">
+        <h2 id="rec-h">Hoogste scores</h2>
+        ${body}
+      </section>`;
   }
 
   // ---------- sync ----------
@@ -412,7 +481,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
               <span class="chip ${done ? 'done' : 'turn'}">${done ? 'Klaar' : `${esc(turn.player.name)} is aan de beurt`}</span>
             </button>`;
           }).join('')}</div>`;
-    return `
+    return `<div class="home-stack">
       ${state.canWrite ? `<section class="panel" aria-labelledby="new-h">
         <h2 id="new-h">Nieuw potje</h2>
         <div class="players-form" id="pf">
@@ -427,7 +496,9 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
       <section class="panel" aria-labelledby="list-h">
         <h2 id="list-h">Potjes</h2>
         ${list}
-      </section>`;
+      </section>
+      ${recordsView()}
+      </div>`;
   }
   const playerInput = (n, i) => `<div class="pf"><input id="pname-${i}" type="text" autocomplete="off" maxlength="20" placeholder="Speler ${i + 1}" value="${esc(n)}"><button class="btn ghost" type="button" data-rm="${i}" aria-label="Speler weghalen">✕</button></div>`;
 
