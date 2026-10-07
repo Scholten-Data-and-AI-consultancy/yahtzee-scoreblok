@@ -98,6 +98,16 @@ h2 { font-family: var(--font-display); font-size: 18px; margin: 0; text-wrap: ba
 .records h3 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
 .records > div { min-width: 0; }
 .home-stack { display: flex; flex-direction: column; gap: 18px; }
+.picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--rule-strong); background: var(--paper); font-weight: 600; }
+.pick.on { background: var(--pen); border-color: var(--pen); color: var(--sheet); }
+.pick-n { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--sheet); color: var(--pen); font-size: 12px; font-weight: 800; }
+.link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
+.link:hover { color: var(--pen); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tile { background: var(--paper); border-radius: 8px; padding: 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.tile-v { font-size: 22px; font-weight: 800; color: var(--pen); }
+.tile-l { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; text-align: center; }
 .top-list { list-style: none; margin: 0; padding: 0; font-variant-numeric: tabular-nums; }
 .top-list li { display: grid; grid-template-columns: 2ch 1fr auto; gap: 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--rule); }
 .top-list li:first-child { border-top: 0; }
@@ -219,6 +229,9 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     canWrite: true,
     needCode: false,
     games: [],
+    players: [],         // saved players, see apply.js
+    selected: null,      // saved player ids picked for the next game, in turn order
+    playerKey: null,     // open player page
     currentId: store.get('yz.current'),
     loaded: false,
     picker: null,        // { pid, key }
@@ -240,12 +253,14 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   }
   const turnOf = window.YZ.turnOf;
   const gameDone = g => (g.players || []).length > 0 && g.players.every(p => totals(g, p.id).done);
-  // Wins per player across all finished games, matched by name. A tie counts as a win for each top scorer.
-  const nameKey = n => String(n || '').trim().toLowerCase();
+  // Stats follow the saved player (playerId), so a rename keeps the history together.
+  const nameKey = window.YZ.nameKey;
+  const playerKey = p => p.playerId || 'n:' + nameKey(p.name);
+  // Wins per player across all finished games. A tie counts as a win for each top scorer.
   function winsByName() {
     const wins = {};
     state.games.filter(gameDone).forEach(g => {
-      const ts = g.players.map(p => ({ k: nameKey(p.name), t: totals(g, p.id).total }));
+      const ts = g.players.map(p => ({ k: playerKey(p), t: totals(g, p.id).total }));
       const top = Math.max(...ts.map(x => x.t));
       new Set(ts.filter(x => x.t === top).map(x => x.k)).forEach(k => { wins[k] = (wins[k] || 0) + 1; });
     });
@@ -253,51 +268,56 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   }
 
   // High scores over finished games only: a game still in progress has totals that will change.
-  // Players are matched by name, like the wins row, and shown with the spelling they used last.
+  // Every saved player gets a row, also before their first finished game.
   function records() {
     const done = state.games.filter(gameDone);
     const wins = winsByName();
     const scores = [];
-    const byName = {};
+    const byKey = {};
+    const row = (k, name) => byKey[k] || (byKey[k] = { key: k, name, last: 0, played: 0, sum: 0, best: 0 });
+    state.players.forEach(r => row(r.id, r.name));
     done.forEach(g => g.players.forEach(p => {
       const t = totals(g, p.id).total;
-      scores.push({ name: p.name, total: t, createdAt: g.createdAt });
-      const k = nameKey(p.name);
-      const r = byName[k] || (byName[k] = { name: p.name, last: 0, played: 0, sum: 0, best: 0 });
+      const k = playerKey(p);
+      scores.push({ key: k, name: p.name, total: t, createdAt: g.createdAt });
+      const r = row(k, p.name);
       r.played++; r.sum += t; r.best = Math.max(r.best, t);
       if (g.createdAt >= r.last) { r.last = g.createdAt; r.name = p.name; }
     }));
     const top = scores.sort((a, b) => b.total - a.total || a.createdAt - b.createdAt).slice(0, 10);
-    const players = Object.entries(byName)
-      .map(([k, r]) => ({ ...r, wins: wins[k] || 0, avg: Math.round(r.sum / r.played) }))
-      .sort((a, b) => b.best - a.best || b.wins - a.wins);
+    const players = Object.values(byKey)
+      .map(r => ({ ...r, wins: wins[r.key] || 0, avg: r.played ? Math.round(r.sum / r.played) : null }))
+      .sort((a, b) => b.best - a.best || b.wins - a.wins || a.name.localeCompare(b.name));
     return { top, players, games: done.length };
   }
 
   function recordsView() {
     if (!state.loaded) return '';
     const { top, players, games } = records();
-    const body = !games
+    if (!games && !players.length) return '';
+    const topBlock = !games
       ? `<p class="muted empty">Nog geen afgemaakte potjes. Zodra een potje helemaal is ingevuld, verschijnen de scores hier.</p>`
-      : `<div class="records">
-          <div>
+      : `<div>
             <h3>Top ${top.length}</h3>
             <ol class="top-list">${top.map((r, i) => `<li class="${i === 0 ? 'first' : ''}">
               <span class="rank">${i + 1}</span>
-              <span class="who">${esc(r.name)}<span class="small muted">${esc(new Date(r.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }))}</span></span>
+              <button class="who link" data-player="${esc(r.key)}">${esc(r.name)}<span class="small muted">${esc(new Date(r.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }))}</span></button>
               <span class="pts">${r.total}</span>
             </li>`).join('')}</ol>
-          </div>
+          </div>`;
+    const body = `<div class="records">
+          ${topBlock}
           <div>
             <h3>Per speler</h3>
             <div class="stats-scroll"><table class="stats">
               <thead><tr><th>Speler</th><th title="Gespeeld">Potjes</th><th title="Gewonnen">Winst</th><th title="Gemiddeld">Gem.</th><th>Beste</th></tr></thead>
-              <tbody>${players.map(r => `<tr><td>${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.avg}</td><td class="best">${r.best}</td></tr>`).join('')}</tbody>
+              <tbody>${players.map(r => `<tr><td><button class="link" data-player="${esc(r.key)}">${esc(r.name)}</button></td><td>${r.played}</td><td>${r.wins}</td><td>${r.avg ?? '·'}</td><td class="best">${r.played ? r.best : '·'}</td></tr>`).join('')}</tbody>
             </table></div>
           </div>
         </div>`;
     return `<section class="panel" aria-labelledby="rec-h">
         <h2 id="rec-h">Hoogste scores</h2>
+        <p class="small muted" style="margin:0">Tik op een naam voor alle potjes van die speler.</p>
         ${body}
       </section>`;
   }
@@ -306,22 +326,27 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   // The server holds the truth. Changes are queued as ops in localStorage first, so scoring keeps
   // working without a connection and catches up as soon as the server is reachable again.
   const { apply } = window.YZ;
-  let serverGames = store.get('yz.cache') || [];
+  // yz.cache2 holds { games, players }; yz.cache was the games array from before saved players.
+  let serverData = window.YZ.migrate(store.get('yz.cache2') || { games: store.get('yz.cache') || [], players: [] });
   let serverVersion = store.get('yz.cacheVersion') || 0;
   let pending = store.get('yz.pending') || [];
   let inflight = false;
   let online = false;
-  state.loaded = !!store.get('yz.cache');
+  state.loaded = !!(store.get('yz.cache2') || store.get('yz.cache'));
 
   const code = () => store.get('yz.code') || '';
   const headers = () => ({ 'Content-Type': 'application/json', 'X-Spelcode': code() });
   const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   function recompute() {
-    state.games = pending.reduce(apply, serverGames);
+    const data = pending.reduce(apply, serverData);
+    state.players = data.players;
+    // Show every game player under the current name of the saved player, so a rename shows everywhere.
+    const names = Object.fromEntries(data.players.map(r => [r.id, r.name]));
+    state.games = data.games.map(g => ({ ...g, players: g.players.map(p => names[p.playerId] ? { ...p, name: names[p.playerId] } : p) }));
   }
   function persist() {
-    store.set('yz.cache', serverGames);
+    store.set('yz.cache2', serverData);
     store.set('yz.cacheVersion', serverVersion);
     store.set('yz.pending', pending);
   }
@@ -337,7 +362,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     el.className = 'status' + (cls ? ' ' + cls : '');
   }
   function receive(body) {
-    serverGames = body.games || [];
+    serverData = { games: body.games || [], players: body.players || [] };
     serverVersion = body.version || 0;
     state.loaded = true;
     online = true;
@@ -407,12 +432,43 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
 
   // ---------- actions ----------
   const current = () => state.games.find(g => g.id === state.currentId) || null;
-  function openGame(id) { state.currentId = id; state.confirmDelete = false; store.set('yz.current', id); render(); window.scrollTo(0, 0); }
-  function goHome() { state.currentId = null; state.confirmDelete = false; store.set('yz.current', null); render(); }
+  function openGame(id) { state.currentId = id; state.playerKey = null; state.confirmDelete = false; store.set('yz.current', id); render(); window.scrollTo(0, 0); }
+  function goHome() { state.currentId = null; state.playerKey = null; state.confirmDelete = false; store.set('yz.current', null); render(); }
 
-  function newGame(names) {
-    const players = names.map(n => ({ id: newId('p'), name: n.slice(0, 30) }));
-    store.set('yz.lastNames', names);
+  function openPlayer(key) { state.playerKey = key; state.currentId = null; state.confirmRemove = false; state.renaming = false; store.set('yz.current', null); render(); window.scrollTo(0, 0); }
+
+  // Saved players, most recently played first; players who never played follow in the order they were added.
+  function rosterByUse() {
+    const last = {};
+    state.games.forEach(g => g.players.forEach(p => { if (p.playerId) last[p.playerId] = Math.max(last[p.playerId] || 0, g.createdAt); }));
+    return state.players.slice().sort((a, b) => (last[b.id] || 0) - (last[a.id] || 0) || (a.createdAt || 0) - (b.createdAt || 0));
+  }
+  // Until someone taps, the next game starts with the players of the most recent game. That default
+  // is recomputed on every render, so it follows the data once it has loaded.
+  function selection() {
+    const known = id => state.players.some(r => r.id === id);
+    if (state.selected) return state.selected.filter(known);
+    const last = state.games[0];
+    return last ? last.players.map(p => p.playerId).filter(known) : [];
+  }
+  function editSelection() { return (state.selected = selection().slice()); }
+
+  function addPlayer(name) {
+    name = name.trim().slice(0, 30);
+    if (!name) return;
+    const existing = state.players.find(r => nameKey(r.name) === nameKey(name));
+    const id = existing ? existing.id : newId('r');
+    if (!existing) send({ type: 'player', player: { id, name, createdAt: Date.now() } });
+    const sel = editSelection();
+    if (!sel.includes(id) && sel.length < 6) sel.push(id);
+    render();
+  }
+
+  function newGame(playerIds) {
+    const names = Object.fromEntries(state.players.map(r => [r.id, r.name]));
+    const players = playerIds.filter(id => names[id]).map(id => ({ id: newId('p'), name: names[id], playerId: id }));
+    if (!players.length) return;
+    state.selected = players.map(p => p.playerId);
     const id = newId('g');
     send({ type: 'create', game: { id, createdAt: Date.now(), players } });
     openGame(id);
@@ -455,6 +511,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   function render() {
     const view = document.getElementById('view');
     if (state.needCode) { state.picker = null; view.innerHTML = codeView(); renderPicker(); return bindCode(); }
+    if (state.playerKey) { view.innerHTML = playerView(state.playerKey); renderPicker(); return bindPlayer(state.playerKey); }
     const g = current();
     view.innerHTML = g ? gameView(g) : homeView();
     renderPicker();
@@ -462,12 +519,10 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   }
 
   function homeView() {
-    const last = store.get('yz.lastNames') || ['', ''];
-    const names = last.length >= 2 ? last : ['', ''];
     const list = !state.loaded
       ? `<p class="muted empty">Je potjes worden geladen…</p>`
       : state.games.length === 0
-        ? `<p class="muted empty">Nog geen potjes. Vul hierboven de spelers in en tik op Start.</p>`
+        ? `<p class="muted empty">Nog geen potjes. Kies hierboven de spelers en tik op Start.</p>`
         : `<div class="games">${state.games.map(g => {
             const done = gameDone(g);
             const date = new Date(g.createdAt).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -484,14 +539,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     return `<div class="home-stack">
       ${state.canWrite ? `<section class="panel" aria-labelledby="new-h">
         <h2 id="new-h">Nieuw potje</h2>
-        <div class="players-form" id="pf">
-          ${names.map((n, i) => playerInput(n, i)).join('')}
-        </div>
-        <div class="row">
-          <button class="btn ghost" id="add-player" type="button">+ Speler</button>
-          <span style="flex:1"></span>
-          <button class="btn primary" id="start" type="button">Start</button>
-        </div>
+        ${newGameForm()}
       </section>` : ''}
       <section class="panel" aria-labelledby="list-h">
         <h2 id="list-h">Potjes</h2>
@@ -500,26 +548,103 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
       ${recordsView()}
       </div>`;
   }
-  const playerInput = (n, i) => `<div class="pf"><input id="pname-${i}" type="text" autocomplete="off" maxlength="20" placeholder="Speler ${i + 1}" value="${esc(n)}"><button class="btn ghost" type="button" data-rm="${i}" aria-label="Speler weghalen">✕</button></div>`;
+  function newGameForm() {
+    const sel = selection();
+    const roster = rosterByUse();
+    const chips = roster.map(r => {
+      const n = sel.indexOf(r.id) + 1;
+      return `<button type="button" class="pick${n ? ' on' : ''}" data-pick="${esc(r.id)}" aria-pressed="${n ? 'true' : 'false'}">${n ? `<span class="pick-n">${n}</span>` : ''}${esc(r.name)}</button>`;
+    }).join('');
+    return `<p class="small muted" style="margin:0">${roster.length ? 'Tik op wie er meedoet, in de volgorde waarin jullie gooien.' : 'Voeg de spelers één keer toe. Daarna kies je ze met een tik.'}</p>
+      ${roster.length ? `<div class="picks">${chips}</div>` : ''}
+      <div class="players-form"><div class="pf">
+        <input id="new-player" type="text" autocomplete="off" maxlength="30" placeholder="Nieuwe speler">
+        <button class="btn" id="add-player" type="button">Toevoegen</button>
+      </div></div>
+      <div class="row">
+        <span class="small muted">${sel.length ? `${sel.length} ${sel.length === 1 ? 'speler' : 'spelers'}` : 'Nog niemand gekozen'}</span>
+        <span style="flex:1"></span>
+        <button class="btn primary" id="start" type="button" ${sel.length ? '' : 'disabled'}>Start</button>
+      </div>`;
+  }
 
   function bindHome() {
     document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
-    const pf = document.getElementById('pf'); if (!pf) return;
-    const collect = () => [...pf.querySelectorAll('input')].map(i => i.value);
-    const redraw = names => { pf.innerHTML = names.map((n, i) => playerInput(n, i)).join(''); bindRm(); };
-    const bindRm = () => pf.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
-      const names = collect(); if (names.length <= 1) return;
-      names.splice(+b.dataset.rm, 1); redraw(names);
+    document.querySelectorAll('[data-player]').forEach(b => b.onclick = () => openPlayer(b.dataset.player));
+    if (!document.getElementById('start')) return;
+    document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+      const sel = editSelection(), id = b.dataset.pick, i = sel.indexOf(id);
+      if (i >= 0) sel.splice(i, 1); else if (sel.length < 6) sel.push(id);
+      render();
     });
-    bindRm();
-    document.getElementById('add-player').onclick = () => {
-      const names = collect(); if (names.length >= 6) return;
-      names.push(''); redraw(names); pf.querySelector(`#pname-${names.length - 1}`).focus();
+    const input = document.getElementById('new-player');
+    const add = () => { const v = input.value; input.value = ''; addPlayer(v); };
+    document.getElementById('add-player').onclick = add;
+    input.onkeydown = e => { if (e.key === 'Enter') add(); };
+    document.getElementById('start').onclick = () => newGame(selection());
+  }
+
+  // ---------- player page ----------
+  function playerView(key) {
+    const saved = state.players.find(r => r.id === key);
+    const games = state.games.filter(g => g.players.some(p => playerKey(p) === key));
+    const anyName = games.length ? games[0].players.find(p => playerKey(p) === key).name : '';
+    const name = saved ? saved.name : anyName;
+    const rows = games.map(g => {
+      const me = g.players.find(p => playerKey(p) === key);
+      const ts = g.players.map(p => totals(g, p.id).total);
+      const mine = totals(g, me.id).total;
+      const done = gameDone(g);
+      const place = 1 + ts.filter(t => t > mine).length;
+      const others = g.players.filter(p => p !== me).map(p => esc(p.name)).join(', ');
+      const date = new Date(g.createdAt).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+      const chip = !done ? `<span class="chip turn">bezig</span>`
+        : g.players.length === 1 ? `<span class="chip done">klaar</span>`
+        : place === 1 ? `<span class="chip done">gewonnen</span>` : `<span class="chip">${place}e van ${g.players.length}</span>`;
+      return `<button class="game-item" data-open="${esc(g.id)}">
+        <span class="gi-main"><span class="gi-names">${mine} punten</span><span class="small muted">${esc(date)}${others ? ` · tegen ${others}` : ''}</span></span>
+        ${chip}
+      </button>`;
+    }).join('');
+    const r = records().players.find(x => x.key === key) || { played: 0, wins: 0, avg: null, best: 0 };
+    const tile = (label, v) => `<div class="tile"><span class="tile-v">${v}</span><span class="tile-l">${label}</span></div>`;
+    return `<div class="home-stack">
+      <div class="game-head"><button class="btn ghost" id="back" type="button">‹ Terug</button></div>
+      <section class="panel" aria-labelledby="pl-h">
+        ${state.renaming && saved
+          ? `<div class="players-form"><div class="pf"><input id="rename" type="text" maxlength="30" value="${esc(saved.name)}"><button class="btn primary" id="rename-ok" type="button">Opslaan</button></div></div>
+             ${state.renameError ? `<p class="small" style="color:var(--pip);margin:0">${esc(state.renameError)}</p>` : ''}`
+          : `<div class="row"><h2 id="pl-h" style="flex:1">${esc(name)}</h2>${saved && state.canWrite ? `<button class="btn ghost" id="rename-start" type="button">Naam wijzigen</button>` : ''}</div>`}
+        <div class="tiles">${tile('potjes af', r.played)}${tile('gewonnen', r.wins)}${tile('gemiddeld', r.avg ?? '·')}${tile('beste', r.played ? r.best : '·')}</div>
+      </section>
+      <section class="panel" aria-labelledby="plg-h">
+        <h2 id="plg-h">Potjes</h2>
+        ${rows ? `<div class="games">${rows}</div>` : `<p class="muted empty">${esc(name)} heeft nog geen potje gespeeld.</p>`}
+      </section>
+      ${saved && state.canWrite ? `<div class="row">${state.confirmRemove
+        ? `<span class="small muted" style="flex:1">${esc(name)} verdwijnt uit de spelerslijst. De potjes en scores blijven bewaard.</span><button class="btn danger" id="rm-yes" type="button">Ja, haal weg</button><button class="btn ghost" id="rm-no" type="button">Laat staan</button>`
+        : `<button class="btn ghost danger" id="rm" type="button">Uit spelerslijst halen</button>`}</div>` : ''}
+    </div>`;
+  }
+
+  function bindPlayer(key) {
+    document.getElementById('back').onclick = goHome;
+    document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
+    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+    on('rename-start', () => { state.renaming = true; state.renameError = ''; render(); const i = document.getElementById('rename'); i.focus(); i.select(); });
+    const save = () => {
+      const name = document.getElementById('rename').value.trim().slice(0, 30);
+      if (!name) { state.renameError = 'Vul een naam in.'; return render(); }
+      if (state.players.some(r => r.id !== key && nameKey(r.name) === nameKey(name))) { state.renameError = `Er is al een speler die ${name} heet.`; return render(); }
+      state.renaming = false; state.renameError = '';
+      send({ type: 'player', player: { id: key, name } });
     };
-    document.getElementById('start').onclick = () => {
-      const names = collect().map((n, i) => n.trim() || `Speler ${i + 1}`);
-      newGame(names);
-    };
+    on('rename-ok', save);
+    const input = document.getElementById('rename');
+    if (input) input.onkeydown = e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { state.renaming = false; render(); } };
+    on('rm', () => { state.confirmRemove = true; render(); });
+    on('rm-no', () => { state.confirmRemove = false; render(); });
+    on('rm-yes', () => { state.confirmRemove = false; send({ type: 'removePlayer', id: key }); });
   }
 
   function gameView(g) {
@@ -575,7 +700,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
             ${sumRow('Totaal boven', (p, t) => t.upper + t.bonus)}
             ${sumRow('Totaal onder', (p, t) => t.lower)}
             ${sumRow('Eindtotaal', (p, t) => `${t.total}${players.length > 1 && t.total === best && best > 0 ? '<span class="leader" aria-label="hoogste score">★</span>' : ''}`, 'grand')}
-            ${(() => { const W = winsByName(); return `<tr class="sum wins"><td class="cat"><div class="cat-name">Gewonnen potjes</div><div class="cat-hint">alle afgemaakte potjes</div></td>${players.map(p => { const n = W[nameKey(p.name)] || 0; return `<td class="num">${n ? '<span class="trophy" aria-hidden="true">🏆</span>' : ''}${n}</td>`; }).join('')}</tr>`; })()}
+            ${(() => { const W = winsByName(); return `<tr class="sum wins"><td class="cat"><div class="cat-name">Gewonnen potjes</div><div class="cat-hint">alle afgemaakte potjes</div></td>${players.map(p => { const n = W[playerKey(p)] || 0; return `<td class="num">${n ? '<span class="trophy" aria-hidden="true">🏆</span>' : ''}${n}</td>`; }).join('')}</tr>`; })()}
           </tbody>
         </table>
       </div>
@@ -585,7 +710,11 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
   function bindGame(g) {
     document.getElementById('back').onclick = goHome;
     const again = document.getElementById('again');
-    if (again) again.onclick = () => newGame((g.players || []).map(p => p.name));
+    if (again) again.onclick = () => {
+      // Players from before saved players existed get linked by the server; make sure they exist here too.
+      const ids = (g.players || []).map(p => p.playerId).filter(Boolean);
+      newGame(ids);
+    };
     const del = document.getElementById('del');
     if (del) del.onclick = () => { state.confirmDelete = true; render(); };
     const no = document.getElementById('del-no');
