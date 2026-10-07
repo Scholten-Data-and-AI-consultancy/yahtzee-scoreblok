@@ -1,0 +1,12 @@
+{
+  "name": "yahtzee-scoreblok",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Yahtzee scoreblok als installeerbare webapp, gesynchroniseerd tussen telefoons",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}

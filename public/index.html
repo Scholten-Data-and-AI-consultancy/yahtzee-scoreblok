@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yahtzee</title>
+<meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1522" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Yahtzee">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a ruled score pad. One sheet column for categories, one per player, sticky name row and totals. */
+:root {
+  --paper: #f5f7fb;
+  --sheet: #ffffff;
+  --rule: #d9e1ee;
+  --rule-strong: #b7c4da;
+  --ink: #17233b;
+  --ink-soft: #5b6884;
+  --pen: #1f4fd1;
+  --pen-soft: #e6edff;
+  --pip: #c2283b;
+  --good: #1d7a4c;
+  --good-soft: #e3f4ea;
+  --warn: #a2560b;
+  --font-display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1522; --sheet: #161e2f; --rule: #263147; --rule-strong: #34425f;
+    --ink: #e8edf7; --ink-soft: #9aa7c2; --pen: #8fb0ff; --pen-soft: #1d2a4d;
+    --pip: #ff6b7d; --good: #6fd6a0; --good-soft: #163327; --warn: #f0b060;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1522; --sheet: #161e2f; --rule: #263147; --rule-strong: #34425f;
+  --ink: #e8edf7; --ink-soft: #9aa7c2; --pen: #8fb0ff; --pen-soft: #1d2a4d;
+  --pip: #ff6b7d; --good: #6fd6a0; --good-soft: #163327; --warn: #f0b060;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+body { margin: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); min-height: 100vh; }
+[hidden] { display: none !important; }
+body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15px; -webkit-tap-highlight-color: transparent; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; display: flex; flex-direction: column; gap: 18px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--pen); outline-offset: 2px; }
+
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font-family: var(--font-display); font-weight: 800; font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+.status { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--pen-soft); color: var(--pen); white-space: nowrap; }
+.status.local { background: var(--sheet); color: var(--warn); border: 1px solid var(--rule-strong); }
+.status.ro { background: var(--sheet); color: var(--ink-soft); border: 1px solid var(--rule-strong); }
+
+.die { width: 22px; height: 22px; flex: none; }
+.die rect { fill: var(--sheet); stroke: var(--ink); stroke-width: 1.6; }
+.die circle { fill: var(--pip); }
+
+h2 { font-family: var(--font-display); font-size: 18px; margin: 0; text-wrap: balance; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 13px; }
+
+.panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.btn { border: 1px solid var(--rule-strong); background: var(--sheet); border-radius: 8px; padding: 10px 14px; font-weight: 600; min-height: 44px; }
+.btn.primary { background: var(--pen); border-color: var(--pen); color: var(--sheet); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--pen); padding-inline: 8px; }
+.btn.danger { color: var(--pip); }
+.btn:disabled { opacity: .45; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.players-form { display: flex; flex-direction: column; gap: 8px; }
+.players-form .pf { display: flex; gap: 8px; }
+.players-form input { flex: 1; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rule-strong); background: var(--paper); color: var(--ink); min-height: 44px; font-size: 16px; }
+
+.games { display: flex; flex-direction: column; }
+.game-item { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--rule); background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; width: 100%; }
+.game-item:first-child { border-top: 0; }
+.game-item .gi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.game-item .gi-names { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--pen-soft); color: var(--pen); white-space: nowrap; }
+.chip.done { background: var(--good-soft); color: var(--good); }
+.empty { padding: 8px 0; }
+
+/* Score sheet */
+.game-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; }
+.sheet-scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sheet); }
+table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.sheet th, .sheet td { border-bottom: 1px solid var(--rule); padding: 0; }
+.sheet td + td, .sheet th + th { border-left: 1px solid var(--rule); }
+.sheet thead th { position: sticky; top: 0; background: var(--sheet); z-index: 1; font-size: 13px; font-weight: 700; padding: 10px 6px; text-align: center; border-bottom: 2px solid var(--rule-strong); }
+.sheet thead th:first-child { text-align: left; padding-left: 12px; }
+.sheet .cat { padding: 6px 10px 6px 12px; min-width: 128px; }
+.cat-wrap { display: flex; align-items: center; gap: 8px; }
+.cat-name { font-weight: 600; font-size: 14px; line-height: 1.2; }
+.cat-hint { font-size: 11px; color: var(--ink-soft); line-height: 1.2; }
+.cell { width: 100%; min-width: 52px; min-height: 44px; border: 0; background: transparent; font-size: 17px; font-weight: 700; color: var(--pen); display: flex; align-items: center; justify-content: center; }
+.cell.empty-cell { color: var(--rule-strong); font-weight: 400; }
+.cell.zero { color: var(--ink-soft); text-decoration: line-through; text-decoration-thickness: 2px; }
+.cell:hover:not(:disabled) { background: var(--pen-soft); }
+.cell.just { animation: ink .7s ease-out; }
+@keyframes ink { from { background: var(--pen-soft); } to { background: transparent; } }
+.sum td { background: var(--paper); }
+.sum .cat .cat-name { font-weight: 700; }
+.sum .num { text-align: center; font-weight: 700; padding: 10px 4px; }
+.bonus-hit { color: var(--good); }
+.togo { font-size: 11px; font-weight: 600; color: var(--ink-soft); display: block; }
+.section-break td { border-bottom: 2px solid var(--rule-strong); }
+.grand td { background: var(--pen-soft); border-bottom: 0; }
+.grand .num { font-size: 19px; color: var(--pen); }
+.grand td { border-bottom: 1px solid var(--rule); }
+.wins td { border-bottom: 0; }
+.wins .num { font-size: 17px; }
+.wins .trophy { color: var(--good); font-size: 13px; margin-right: 3px; }
+.leader { display: inline-block; margin-left: 4px; color: var(--good); }
+
+.winner { background: var(--good-soft); color: var(--good); border-radius: var(--radius); padding: 12px 16px; font-weight: 700; }
+
+/* Picker sheet */
+.scrim { position: fixed; inset: 0; background: rgba(10, 16, 30, .45); z-index: 10; display: flex; align-items: flex-end; justify-content: center; }
+.picker { background: var(--sheet); width: 100%; max-width: 520px; border-radius: 16px 16px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; max-height: 85%; overflow-y: auto; }
+.picker-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.opt { border: 1px solid var(--rule-strong); background: var(--paper); border-radius: 10px; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.opt strong { font-size: 20px; }
+.opt span { font-size: 11px; color: var(--ink-soft); }
+.opt.sel { border-color: var(--pen); background: var(--pen-soft); color: var(--pen); }
+.opt.big { min-height: 64px; }
+.stepper { display: flex; align-items: center; gap: 16px; justify-content: center; }
+.stepper .val { font-size: 28px; font-weight: 800; min-width: 3ch; text-align: center; font-variant-numeric: tabular-nums; }
+.stepper .btn { min-width: 56px; font-size: 22px; }
+
+.hint-line { font-size: 13px; color: var(--ink-soft); }
+@media (prefers-reduced-motion: reduce) { .cell.just { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="die" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="7.5" cy="7.5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="7.5" r="1.8"/><circle cx="7.5" cy="16.5" r="1.8"/></svg>
+      <h1>Yahtzee</h1>
+    </div>
+    <span class="status" id="status">Laden…</span>
+  </header>
+  <main id="view"></main>
+</div>
+<div id="picker-root"></div>
+
+<script src="apply.js"></script>
+<script>
+(() => {
+  const CATS = [
+    { key: 'ones', name: 'Enen', face: 1, upper: true },
+    { key: 'twos', name: 'Tweeën', face: 2, upper: true },
+    { key: 'threes', name: 'Drieën', face: 3, upper: true },
+    { key: 'fours', name: 'Vieren', face: 4, upper: true },
+    { key: 'fives', name: 'Vijven', face: 5, upper: true },
+    { key: 'sixes', name: 'Zessen', face: 6, upper: true },
+    { key: 'threeKind', name: 'Drie dezelfde', hint: 'som van alle ogen', kind: 'sum' },
+    { key: 'fourKind', name: 'Vier dezelfde', hint: 'som van alle ogen', kind: 'sum' },
+    { key: 'fullHouse', name: 'Full house', hint: '25 punten', kind: 'fixed', value: 25 },
+    { key: 'smallStraight', name: 'Kleine straat', hint: '4 op rij, 30 punten', kind: 'fixed', value: 30 },
+    { key: 'largeStraight', name: 'Grote straat', hint: '5 op rij, 40 punten', kind: 'fixed', value: 40 },
+    { key: 'yahtzee', name: 'Yahtzee', hint: '5 dezelfde, 50 punten', kind: 'fixed', value: 50 },
+    { key: 'chance', name: 'Kans', hint: 'som van alle ogen', kind: 'sum' },
+  ];
+  const UPPER = CATS.filter(c => c.upper);
+  const LOWER = CATS.filter(c => !c.upper);
+  const PIPS = { 1: [[12,12]], 2: [[7.5,7.5],[16.5,16.5]], 3: [[7.5,7.5],[12,12],[16.5,16.5]], 4: [[7.5,7.5],[16.5,7.5],[7.5,16.5],[16.5,16.5]], 5: [[7.5,7.5],[16.5,7.5],[12,12],[7.5,16.5],[16.5,16.5]], 6: [[7.5,6.5],[16.5,6.5],[7.5,12],[16.5,12],[7.5,17.5],[16.5,17.5]] };
+  const dieSvg = n => `<svg class="die" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/>${PIPS[n].map(([x,y]) => `<circle cx="${x}" cy="${y}" r="1.8"/>`).join('')}</svg>`;
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  const state = {
+    canWrite: true,
+    needCode: false,
+    games: [],
+    currentId: store.get('yz.current'),
+    loaded: false,
+    picker: null,        // { pid, key }
+    flash: null,
+    confirmDelete: false,
+  };
+
+  // ---------- scoring ----------
+  const val = (sc, key) => (sc && typeof sc[key] === 'number') ? sc[key] : null;
+  function totals(game, pid) {
+    const sc = (game.scores && game.scores[pid]) || {};
+    const upper = UPPER.reduce((a, c) => a + (val(sc, c.key) || 0), 0);
+    const bonus = upper >= 63 ? 35 : 0;
+    const yzBonus = (val(sc, 'yahtzee') === 50 ? (sc.yahtzeeBonus || 0) : 0) * 100;
+    const lower = LOWER.reduce((a, c) => a + (val(sc, c.key) || 0), 0) + yzBonus;
+    const filled = CATS.filter(c => val(sc, c.key) !== null).length;
+    const upperFilled = UPPER.filter(c => val(sc, c.key) !== null).length;
+    return { upper, bonus, lower, yzBonus, total: upper + bonus + lower, filled, upperFilled, done: filled === CATS.length };
+  }
+  const gameDone = g => (g.players || []).length > 0 && g.players.every(p => totals(g, p.id).done);
+  // Wins per player across all finished games, matched by name. A tie counts as a win for each top scorer.
+  const nameKey = n => String(n || '').trim().toLowerCase();
+  function winsByName() {
+    const wins = {};
+    state.games.filter(gameDone).forEach(g => {
+      const ts = g.players.map(p => ({ k: nameKey(p.name), t: totals(g, p.id).total }));
+      const top = Math.max(...ts.map(x => x.t));
+      new Set(ts.filter(x => x.t === top).map(x => x.k)).forEach(k => { wins[k] = (wins[k] || 0) + 1; });
+    });
+    return wins;
+  }
+
+  // ---------- sync ----------
+  // The server holds the truth. Changes are queued as ops in localStorage first, so scoring keeps
+  // working without a connection and catches up as soon as the server is reachable again.
+  const { apply } = window.YZ;
+  let serverGames = store.get('yz.cache') || [];
+  let serverVersion = store.get('yz.cacheVersion') || 0;
+  let pending = store.get('yz.pending') || [];
+  let inflight = false;
+  let online = false;
+  state.loaded = !!store.get('yz.cache');
+
+  const code = () => store.get('yz.code') || '';
+  const headers = () => ({ 'Content-Type': 'application/json', 'X-Spelcode': code() });
+  const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  function recompute() {
+    state.games = pending.reduce(apply, serverGames);
+  }
+  function persist() {
+    store.set('yz.cache', serverGames);
+    store.set('yz.cacheVersion', serverVersion);
+    store.set('yz.pending', pending);
+  }
+  function updateStatus() {
+    if (!online) setStatus(pending.length ? `Offline, ${pending.length} ${pending.length === 1 ? 'wijziging wacht' : 'wijzigingen wachten'}` : 'Offline', 'local');
+    else if (pending.length) setStatus('Opslaan…');
+    else setStatus('Gesynchroniseerd');
+  }
+  function setStatus(text, cls) {
+    const el = document.getElementById('status');
+    el.textContent = text;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+  }
+  function receive(body) {
+    serverGames = body.games || [];
+    serverVersion = body.version || 0;
+    state.loaded = true;
+    online = true;
+  }
+  function needCode() {
+    state.needCode = true;
+    online = false;
+    render();
+  }
+
+  async function fetchState() {
+    try {
+      const r = await fetch('api/state', { headers: headers(), cache: 'no-store' });
+      if (r.status === 401) return needCode();
+      if (!r.ok) throw new Error(r.status);
+      receive(await r.json());
+    } catch { online = false; }
+    recompute(); persist(); updateStatus(); render();
+  }
+
+  async function flush() {
+    if (inflight || !pending.length || state.needCode) return;
+    inflight = true;
+    const batch = pending.slice();
+    try {
+      const r = await fetch('api/ops', { method: 'POST', headers: headers(), body: JSON.stringify({ ops: batch }) });
+      if (r.status === 401) { inflight = false; return needCode(); }
+      if (!r.ok) throw new Error(r.status);
+      receive(await r.json());
+      pending = pending.slice(batch.length);
+    } catch { online = false; }
+    inflight = false;
+    recompute(); persist(); updateStatus(); render();
+    if (online && pending.length) flush();
+  }
+
+  function send(op) {
+    pending.push(op);
+    recompute(); persist(); updateStatus(); render();
+    flush();
+  }
+
+  let events = null;
+  function listen() {
+    if (events) events.close();
+    events = new EventSource('api/events?code=' + encodeURIComponent(code()));
+    events.onmessage = e => {
+      online = true;
+      let v = 0; try { v = JSON.parse(e.data).version; } catch {}
+      if (v !== serverVersion) fetchState(); else updateStatus();
+      flush();
+    };
+    events.onerror = () => { online = false; updateStatus(); };
+  }
+
+  function boot() {
+    recompute(); render(); updateStatus();
+    fetchState().then(() => { if (!state.needCode) { listen(); flush(); } });
+    window.addEventListener('online', () => { fetchState(); flush(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !state.needCode) { fetchState(); flush(); listen(); }
+    });
+    setInterval(() => { if (pending.length) flush(); }, 15000);
+  }
+
+  // ---------- actions ----------
+  const current = () => state.games.find(g => g.id === state.currentId) || null;
+  function openGame(id) { state.currentId = id; state.confirmDelete = false; store.set('yz.current', id); render(); window.scrollTo(0, 0); }
+  function goHome() { state.currentId = null; state.confirmDelete = false; store.set('yz.current', null); render(); }
+
+  function newGame(names) {
+    const players = names.map(n => ({ id: newId('p'), name: n.slice(0, 30) }));
+    store.set('yz.lastNames', names);
+    const id = newId('g');
+    send({ type: 'create', game: { id, createdAt: Date.now(), players } });
+    openGame(id);
+  }
+
+  function setScore(pid, key, v) {
+    const g = current(); if (!g) return;
+    state.flash = pid + ':' + key;
+    send({ type: 'score', id: g.id, pid, key, value: v });
+  }
+
+  function removeGame(id) { send({ type: 'delete', id }); }
+
+  function codeView() {
+    return `<section class="panel" aria-labelledby="code-h">
+      <h2 id="code-h">Spelcode</h2>
+      <p class="muted">Vul de spelcode in die bij deze scoreblok hoort. Je hoeft dat maar één keer te doen op dit toestel.</p>
+      <div class="players-form"><div class="pf"><input id="code-in" type="password" autocomplete="current-password" placeholder="Spelcode"></div></div>
+      ${state.codeError ? `<p class="small" style="color:var(--pip);margin:0">Die code klopt niet. Probeer het nog eens.</p>` : ''}
+      <div class="row"><span style="flex:1"></span><button class="btn primary" id="code-ok" type="button">Doorgaan</button></div>
+    </section>`;
+  }
+  function bindCode() {
+    const input = document.getElementById('code-in');
+    const go = async () => {
+      store.set('yz.code', input.value.trim());
+      state.needCode = false;
+      await fetchState();
+      if (state.needCode) { state.codeError = true; render(); return; }
+      state.codeError = false;
+      listen(); flush();
+    };
+    document.getElementById('code-ok').onclick = go;
+    input.onkeydown = e => { if (e.key === 'Enter') go(); };
+    input.focus();
+  }
+
+  // ---------- views ----------
+  function render() {
+    const view = document.getElementById('view');
+    if (state.needCode) { state.picker = null; view.innerHTML = codeView(); renderPicker(); return bindCode(); }
+    const g = current();
+    view.innerHTML = g ? gameView(g) : homeView();
+    renderPicker();
+    if (!g) bindHome(); else bindGame(g);
+  }
+
+  function homeView() {
+    const last = store.get('yz.lastNames') || ['', ''];
+    const names = last.length >= 2 ? last : ['', ''];
+    const list = !state.loaded
+      ? `<p class="muted empty">Je potjes worden geladen…</p>`
+      : state.games.length === 0
+        ? `<p class="muted empty">Nog geen potjes. Vul hierboven de spelers in en tik op Start.</p>`
+        : `<div class="games">${state.games.map(g => {
+            const done = gameDone(g);
+            const date = new Date(g.createdAt).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+            const lead = (g.players || []).map(p => ({ p, t: totals(g, p.id).total })).sort((a, b) => b.t - a.t)[0];
+            return `<button class="game-item" data-open="${esc(g.id)}">
+              <span class="gi-main">
+                <span class="gi-names">${(g.players || []).map(p => esc(p.name)).join(', ')}</span>
+                <span class="small muted">${esc(date)}${lead ? ` · ${done ? 'gewonnen door' : 'voorop'}: ${esc(lead.p.name)} (${lead.t})` : ''}</span>
+              </span>
+              <span class="chip ${done ? 'done' : ''}">${done ? 'Klaar' : 'Bezig'}</span>
+            </button>`;
+          }).join('')}</div>`;
+    return `
+      ${state.canWrite ? `<section class="panel" aria-labelledby="new-h">
+        <h2 id="new-h">Nieuw potje</h2>
+        <div class="players-form" id="pf">
+          ${names.map((n, i) => playerInput(n, i)).join('')}
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="add-player" type="button">+ Speler</button>
+          <span style="flex:1"></span>
+          <button class="btn primary" id="start" type="button">Start</button>
+        </div>
+      </section>` : ''}
+      <section class="panel" aria-labelledby="list-h">
+        <h2 id="list-h">Potjes</h2>
+        ${list}
+      </section>`;
+  }
+  const playerInput = (n, i) => `<div class="pf"><input id="pname-${i}" type="text" autocomplete="off" maxlength="20" placeholder="Speler ${i + 1}" value="${esc(n)}"><button class="btn ghost" type="button" data-rm="${i}" aria-label="Speler weghalen">✕</button></div>`;
+
+  function bindHome() {
+    document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
+    const pf = document.getElementById('pf'); if (!pf) return;
+    const collect = () => [...pf.querySelectorAll('input')].map(i => i.value);
+    const redraw = names => { pf.innerHTML = names.map((n, i) => playerInput(n, i)).join(''); bindRm(); };
+    const bindRm = () => pf.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      const names = collect(); if (names.length <= 1) return;
+      names.splice(+b.dataset.rm, 1); redraw(names);
+    });
+    bindRm();
+    document.getElementById('add-player').onclick = () => {
+      const names = collect(); if (names.length >= 6) return;
+      names.push(''); redraw(names); pf.querySelector(`#pname-${names.length - 1}`).focus();
+    };
+    document.getElementById('start').onclick = () => {
+      const names = collect().map((n, i) => n.trim() || `Speler ${i + 1}`);
+      newGame(names);
+    };
+  }
+
+  function gameView(g) {
+    const players = g.players || [];
+    const T = Object.fromEntries(players.map(p => [p.id, totals(g, p.id)]));
+    const best = Math.max(...players.map(p => T[p.id].total));
+    const done = gameDone(g);
+    const cellBtn = (p, c) => {
+      const v = val(g.scores?.[p.id], c.key);
+      const cls = v === null ? 'empty-cell' : v === 0 ? 'zero' : '';
+      const just = state.flash === p.id + ':' + c.key ? ' just' : '';
+      const label = `${c.name} voor ${p.name}: ${v === null ? 'leeg' : v}`;
+      return `<td><button class="cell ${cls}${just}" data-p="${esc(p.id)}" data-k="${c.key}" aria-label="${esc(label)}" ${state.canWrite ? '' : 'disabled'}>${v === null ? '·' : v}</button></td>`;
+    };
+    const catCell = c => `<td class="cat"><div class="cat-wrap">${c.face ? dieSvg(c.face) : ''}<div><div class="cat-name">${c.name}</div>${c.hint ? `<div class="cat-hint">${c.hint}</div>` : c.face ? `<div class="cat-hint">tel alle ${c.name.toLowerCase()}</div>` : ''}</div></div></td>`;
+    const row = c => `<tr>${catCell(c)}${players.map(p => cellBtn(p, c)).join('')}</tr>`;
+    const sumRow = (name, fn, extra = '') => `<tr class="sum ${extra}"><td class="cat"><div class="cat-name">${name}</div></td>${players.map(p => `<td class="num">${fn(p, T[p.id])}</td>`).join('')}</tr>`;
+    const yzRow = `<tr><td class="cat"><div class="cat-name">Yahtzee bonus</div><div class="cat-hint">100 per extra Yahtzee</div></td>${players.map(p => {
+      const sc = g.scores?.[p.id] || {};
+      const n = sc.yahtzeeBonus || 0;
+      const ok = val(sc, 'yahtzee') === 50;
+      return `<td><button class="cell ${n ? '' : 'empty-cell'}" data-p="${esc(p.id)}" data-k="yahtzeeBonus" ${state.canWrite && ok ? '' : 'disabled'} aria-label="Yahtzee bonus voor ${esc(p.name)}: ${n * 100}">${ok && n ? n * 100 : '·'}</button></td>`;
+    }).join('')}</tr>`;
+
+    const winners = players.filter(p => T[p.id].total === best);
+    return `
+      <div class="game-head" style="margin-bottom:12px">
+        <button class="btn ghost" id="back" type="button">‹ Alle potjes</button>
+        <div class="row">
+          ${state.canWrite ? `<button class="btn" id="again" type="button">Nieuw potje, zelfde spelers</button>` : ''}
+          ${state.canWrite ? (state.confirmDelete
+            ? `<button class="btn danger" id="del-yes" type="button">Ja, verwijder</button><button class="btn ghost" id="del-no" type="button">Laat staan</button>`
+            : `<button class="btn ghost danger" id="del" type="button">Verwijder</button>`) : ''}
+        </div>
+      </div>
+      ${done ? `<div class="winner" style="margin-bottom:12px">${winners.length > 1 ? 'Gelijkspel' : 'Gewonnen'}: ${winners.map(p => esc(p.name)).join(' en ')} met ${best} punten</div>` : ''}
+      <div class="sheet-scroll">
+        <table class="sheet">
+          <thead><tr><th>Bovenste deel</th>${players.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${UPPER.map(row).join('')}
+            ${sumRow('Subtotaal', (p, t) => {
+              const togo = t.upperFilled < 6 && t.upper < 63 ? `<span class="togo">nog ${63 - t.upper}</span>` : '';
+              return `${t.upper}${togo}`;
+            })}
+            ${sumRow('Bonus <span class="cat-hint">(35 bij 63 of meer)</span>', (p, t) => t.bonus ? `<span class="bonus-hit">35</span>` : (t.upperFilled === 6 ? '0' : '·'), 'section-break')}
+            ${LOWER.map(row).join('')}
+            ${yzRow}
+            ${sumRow('Totaal boven', (p, t) => t.upper + t.bonus)}
+            ${sumRow('Totaal onder', (p, t) => t.lower)}
+            ${sumRow('Eindtotaal', (p, t) => `${t.total}${players.length > 1 && t.total === best && best > 0 ? '<span class="leader" aria-label="hoogste score">★</span>' : ''}`, 'grand')}
+            ${(() => { const W = winsByName(); return `<tr class="sum wins"><td class="cat"><div class="cat-name">Gewonnen potjes</div><div class="cat-hint">alle afgemaakte potjes</div></td>${players.map(p => { const n = W[nameKey(p.name)] || 0; return `<td class="num">${n ? '<span class="trophy" aria-hidden="true">🏆</span>' : ''}${n}</td>`; }).join('')}</tr>`; })()}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint-line" style="margin-top:10px">Tik op een vakje om de score te kiezen. Een doorgestreepte 0 betekent geschrapt.</p>`;
+  }
+
+  function bindGame(g) {
+    document.getElementById('back').onclick = goHome;
+    const again = document.getElementById('again');
+    if (again) again.onclick = () => newGame((g.players || []).map(p => p.name));
+    const del = document.getElementById('del');
+    if (del) del.onclick = () => { state.confirmDelete = true; render(); };
+    const no = document.getElementById('del-no');
+    if (no) no.onclick = () => { state.confirmDelete = false; render(); };
+    const yes = document.getElementById('del-yes');
+    if (yes) yes.onclick = async () => {
+      const id = g.id; goHome();
+      removeGame(id);
+    };
+    document.querySelectorAll('.cell[data-k]').forEach(b => b.onclick = () => {
+      state.picker = { pid: b.dataset.p, key: b.dataset.k };
+      state.flash = null;
+      renderPicker();
+    });
+    state.flash = null;
+  }
+
+  // ---------- picker ----------
+  function renderPicker() {
+    const root = document.getElementById('picker-root');
+    const g = current();
+    if (!state.picker || !g) { root.innerHTML = ''; return; }
+    const { pid, key } = state.picker;
+    const p = (g.players || []).find(x => x.id === pid);
+    if (!p) { state.picker = null; root.innerHTML = ''; return; }
+    const sc = g.scores?.[pid] || {};
+    const close = () => { state.picker = null; root.innerHTML = ''; };
+
+    let title, body;
+    if (key === 'yahtzeeBonus') {
+      const n = sc.yahtzeeBonus || 0;
+      title = 'Yahtzee bonus';
+      body = `<p class="hint-line">Gooi je nog een Yahtzee terwijl je 50 al hebt? Dan krijg je 100 punten extra.</p>
+        <div class="stepper"><button class="btn" id="yz-min" ${n ? '' : 'disabled'} aria-label="Eén minder">−</button><span class="val">${n * 100}</span><button class="btn" id="yz-plus" aria-label="Eén extra Yahtzee">+</button></div>
+        <button class="btn primary" id="pk-done">Klaar</button>`;
+    } else {
+      const c = CATS.find(x => x.key === key);
+      const cur = val(sc, key);
+      let opts;
+      if (c.upper) opts = [1, 2, 3, 4, 5].map(n => ({ v: n * c.face, sub: `${n}× ${c.face}` }));
+      else if (c.kind === 'fixed') opts = [{ v: c.value, sub: c.name, big: true }];
+      else opts = Array.from({ length: 26 }, (_, i) => ({ v: i + 5 }));
+      opts.push({ v: 0, sub: 'schrappen', big: c.kind === 'fixed' });
+      title = c.name;
+      body = `${c.hint ? `<p class="hint-line">${c.upper ? '' : c.hint[0].toUpperCase() + c.hint.slice(1)}</p>` : `<p class="hint-line">Hoeveel ${c.name.toLowerCase()} heb je gegooid?</p>`}
+        <div class="picker-grid">${opts.map(o => `<button class="opt ${o.big ? 'big' : ''} ${cur === o.v ? 'sel' : ''}" data-v="${o.v}"><strong>${o.v}</strong>${o.sub ? `<span>${o.sub}</span>` : ''}</button>`).join('')}</div>
+        <div class="row">${cur !== null ? `<button class="btn ghost danger" id="pk-clear">Vakje leegmaken</button>` : ''}<span style="flex:1"></span><button class="btn" id="pk-cancel">Annuleer</button></div>`;
+    }
+    root.innerHTML = `<div class="scrim" id="scrim"><div class="picker" role="dialog" aria-modal="true" aria-label="${esc(title)} voor ${esc(p.name)}">
+      <div class="picker-head"><h2>${esc(title)}</h2><span class="muted small">${esc(p.name)}</span></div>${body}</div></div>`;
+
+    document.getElementById('scrim').onclick = e => { if (e.target.id === 'scrim') close(); };
+    root.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { close(); setScore(pid, key, +b.dataset.v); });
+    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+    on('pk-cancel', close);
+    on('pk-done', close);
+    on('pk-clear', () => { close(); setScore(pid, key, null); });
+    on('yz-plus', () => { setScore(pid, 'yahtzeeBonus', (sc.yahtzeeBonus || 0) + 1); });
+    on('yz-min', () => { setScore(pid, 'yahtzeeBonus', Math.max(0, (sc.yahtzeeBonus || 0) - 1)); });
+    const first = root.querySelector('.opt.sel, .opt, #yz-plus');
+    if (first) first.focus({ preventScroll: true });
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.picker) { state.picker = null; renderPicker(); } });
+
+  boot();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
