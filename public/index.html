@@ -219,15 +219,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     const upperFilled = UPPER.filter(c => val(sc, c.key) !== null).length;
     return { upper, bonus, lower, yzBonus, total: upper + bonus + lower, filled, upperFilled, done: filled === CATS.length };
   }
-  // Every turn fills exactly one box, so whoever has filled the fewest boxes plays next;
-  // on a tie the earliest player in the column order goes first. Returns null once the game is over.
-  function turnOf(g) {
-    const players = g.players || [];
-    if (!players.length || gameDone(g)) return null;
-    const counts = players.map(p => totals(g, p.id).filled);
-    const min = Math.min(...counts);
-    return { player: players[counts.indexOf(min)], round: min + 1 };
-  }
+  const turnOf = window.YZ.turnOf;
   const gameDone = g => (g.players || []).length > 0 && g.players.every(p => totals(g, p.id).done);
   // Wins per player across all finished games, matched by name. A tie counts as a win for each top scorer.
   const nameKey = n => String(n || '').trim().toLowerCase();
@@ -467,9 +459,10 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
     const cellBtn = (p, c) => {
       const v = val(g.scores?.[p.id], c.key);
       const cls = v === null ? 'empty-cell' : v === 0 ? 'zero' : '';
+      const locked = v === null && p.id !== turnId;
       const just = state.flash === p.id + ':' + c.key ? ' just' : '';
       const label = `${c.name} voor ${p.name}: ${v === null ? 'leeg' : v}`;
-      return `<td${p.id === turnId ? ' class="turn-col"' : ''}><button class="cell ${cls}${just}" data-p="${esc(p.id)}" data-k="${c.key}" aria-label="${esc(label)}" ${state.canWrite ? '' : 'disabled'}>${v === null ? '·' : v}</button></td>`;
+      return `<td${p.id === turnId ? ' class="turn-col"' : ''}><button class="cell ${cls}${just}" data-p="${esc(p.id)}" data-k="${c.key}" aria-label="${esc(label)}${locked ? ', niet aan de beurt' : ''}" ${state.canWrite && !locked ? '' : 'disabled'}>${v === null ? '·' : v}</button></td>`;
     };
     const catCell = c => `<td class="cat"><div class="cat-wrap">${c.face ? dieSvg(c.face) : ''}<div><div class="cat-name">${c.name}</div>${c.hint ? `<div class="cat-hint">${c.hint}</div>` : c.face ? `<div class="cat-hint">tel alle ${c.name.toLowerCase()}</div>` : ''}</div></div></td>`;
     const row = c => `<tr>${catCell(c)}${players.map(p => cellBtn(p, c)).join('')}</tr>`;
@@ -515,7 +508,7 @@ table.sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabu
           </tbody>
         </table>
       </div>
-      <p class="hint-line" style="margin-top:10px">Tik op een vakje om de score te kiezen. Een doorgestreepte 0 betekent geschrapt.</p>`;
+      <p class="hint-line" style="margin-top:10px">Tik op een leeg vakje in de blauwe kolom om de score te kiezen. Een ingevulde score kun je altijd aanpassen. Een doorgestreepte 0 betekent geschrapt.</p>`;
   }
 
   function bindGame(g) {
